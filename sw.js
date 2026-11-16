@@ -1,5 +1,5 @@
 // Service Worker: App funktioniert offline, holt aber online immer die neueste Version.
-const CACHE = 'arbeitszeit-v1.0.0';
+const CACHE = 'arbeitszeit-v1.0.1';
 const ASSETS = [
   './', './index.html', './style.css', './app.js', './xlsx.js', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png',

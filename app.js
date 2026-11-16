@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 const KEY = 'arbeitszeit.v1';
 const DEFAULT_NAMES = ['Unterrichtszeit', 'Korrekturen', 'Unterrichtsvorbereitung', 'Unterrichtsnachbereitung',
   'Schulportal', 'Konferenz', 'Fortbildung', 'Gesundheitsteam', 'ISB-Projekt', 'Fachkonferenz'];
@@ -464,10 +464,10 @@ function canShareFile(name, mime) {
 
 async function deliverFile(blob, name, mode) {
   const file = new File([blob], name, { type: blob.type });
-  if (mode === 'share' && navigator.canShare && navigator.canShare({ files: [file] })) {
+  if (mode === 'share' && navigator.share) {
     try {
       await navigator.share({ files: [file], title: name });
-      return true;
+      return 'shared';
     } catch (e) {
       if (e && e.name === 'AbortError') return false;
       console.warn('Teilen fehlgeschlagen, lade herunter', e);
@@ -480,21 +480,23 @@ async function deliverFile(blob, name, mode) {
   a.click();
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 60000);
   window.__lastDownload = { name, blob }; // für Tests
-  return true;
+  return 'downloaded';
 }
 
 /* ---------- Sicherung ---------- */
 
 async function exportBackup(mode) {
   const payload = { app: 'arbeitszeit', format: 1, exportedAt: new Date().toISOString(), appVersion: APP_VERSION, state };
-  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-  const name = `Arbeitszeit_Sicherung_${dateVal(Date.now())}.json`;
-  const ok = await deliverFile(blob, name, mode);
-  if (ok) {
+  // Chrome teilt nur bestimmte Dateitypen (u. a. Text), daher beim Teilen als .txt
+  const asText = mode === 'share';
+  const blob = new Blob([JSON.stringify(payload)], { type: asText ? 'text/plain' : 'application/json' });
+  const name = `Arbeitszeit_Sicherung_${dateVal(Date.now())}.${asText ? 'txt' : 'json'}`;
+  const res = await deliverFile(blob, name, mode);
+  if (res) {
     state.settings.lastBackup = Date.now();
     save();
     render();
-    snack('Sicherung erstellt');
+    snack(res === 'shared' ? 'Sicherung geteilt' : `Sicherung im Download-Ordner gespeichert: ${name}`);
   }
 }
 
@@ -595,8 +597,8 @@ async function exportExcel(mode) {
   const sy = val === 'all' ? 'all' : +val;
   const bytes = buildExport(sy);
   const name = sy === 'all' ? `Arbeitszeit_alle_${dateVal(Date.now())}.xlsx` : `Arbeitszeit_${sy}-${pad2((sy + 1) % 100)}.xlsx`;
-  const ok = await deliverFile(new Blob([bytes], { type: XLSX.MIME }), name, mode);
-  if (ok) snack(mode === 'share' ? 'Excel-Datei erstellt' : 'Excel-Datei heruntergeladen: ' + name);
+  const res = await deliverFile(new Blob([bytes], { type: XLSX.MIME }), name, 'download');
+  if (res) snack(`Im Download-Ordner gespeichert: ${name}`);
 }
 
 /* ---------- Ansichten ---------- */
@@ -674,7 +676,6 @@ function viewEntries() {
 
 function viewExport() {
   const ys = schoolYearsWithData();
-  const share = canShareFile('a.xlsx', XLSX.MIME);
   const r = running();
   return `<div class="card">
     <h2 style="margin-top:0">Excel-Export</h2>
@@ -683,17 +684,15 @@ function viewExport() {
       <option value="all">Alle Schuljahre</option>
       ${ys.map((y) => `<option value="${y}">Schuljahr ${syLabel(y)}</option>`).join('')}
     </select></label>
-    <div class="stack">
-      ${share ? '<button class="btn primary block" data-action="export-share">Excel-Datei teilen …</button>' : ''}
-      <button class="btn ${share ? '' : 'primary'} block" data-action="export-download">Excel-Datei herunterladen</button>
-    </div>
+    <button class="btn primary block" data-action="export-download">Excel-Datei herunterladen</button>
+    <p class="muted small">Die Datei landet im Download-Ordner deines Handys. Öffnen kannst du sie über die Download-Benachrichtigung oder die App „Dateien“ – z. B. mit Excel oder Google Tabellen.</p>
     ${r ? '<p class="muted small">Hinweis: Die gerade laufende Erfassung wird erst nach dem Stoppen exportiert.</p>' : ''}
   </div>`;
 }
 
 function viewSettings() {
   const acts = activeActs();
-  const share = canShareFile('a.json', 'application/json');
+  const share = !!navigator.share && canShareFile('a.txt', 'text/plain');
   const lb = state.settings.lastBackup;
   return `<h2 class="section-title">Tätigkeiten</h2>
     <div class="day-list" id="act-list">
@@ -766,7 +765,6 @@ function onViewClick(ev) {
     case 'backup-share': exportBackup('share'); break;
     case 'backup-download': exportBackup('download'); break;
     case 'backup-import': $('#import-file').value = ''; $('#import-file').click(); break;
-    case 'export-share': exportExcel('share'); break;
     case 'export-download': exportExcel('download'); break;
   }
 }
