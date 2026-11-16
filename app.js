@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 const KEY = 'arbeitszeit.v1';
 const DEFAULT_NAMES = ['Unterrichtszeit', 'Korrekturen', 'Unterrichtsvorbereitung', 'Unterrichtsnachbereitung',
   'Schulportal', 'Konferenz', 'Fortbildung', 'Gesundheitsteam', 'ISB-Projekt', 'Fachkonferenz'];
@@ -797,7 +797,20 @@ function init() {
   setInterval(tick, 1000);
   setInterval(checkLongRunning, 60000);
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('SW', e));
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    // Neue Version installiert -> einmal neu laden, damit sie sofort aktiv ist
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloaded || document.querySelector('.modal-backdrop')) return;
+      reloaded = true;
+      location.reload();
+    });
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+      .then((reg) => {
+        // Beim Zurückkehren in die App nach Updates suchen
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+      })
+      .catch((e) => console.warn('SW', e));
   }
 }
 

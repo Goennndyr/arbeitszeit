@@ -1,5 +1,6 @@
-// Service Worker: App funktioniert offline, holt aber online immer die neueste Version.
-const CACHE = 'arbeitszeit-v1.0.1';
+// Service Worker: App funktioniert offline, holt aber online immer die neueste Version
+// (am HTTP-Zwischenspeicher von GitHub Pages vorbei).
+const CACHE = 'arbeitszeit-v1.0.2';
 const ASSETS = [
   './', './index.html', './style.css', './app.js', './xlsx.js', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png',
@@ -7,7 +8,7 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
@@ -26,7 +27,7 @@ self.addEventListener('fetch', (event) => {
     const cache = await caches.open(CACHE);
     try {
       const res = await Promise.race([
-        fetch(req),
+        fetch(req, { cache: 'no-cache' }), // beim Server nachfragen, ob es eine neue Version gibt
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000))
       ]);
       if (res && res.ok) cache.put(req, res.clone());
